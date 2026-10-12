@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Atacuri - AD Attack Lab</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+  <h1>AD Attack Lab</h1>
+  <nav class="nav-links">
+    <a href="/">Acasa</a>
+    <a href="/attacks" class="active">Atacuri</a>
+    <a href="/free-lab">Free Lab</a>
+    <a href="/settings">Setari</a>
+  </nav>
+</div>
+
+<!-- LAB STATUS -->
+<div class="section-title">Status Lab</div>
+<div class="status-grid">
+
+  <div class="status-card">
+    <div class="machine-name">Kali Linux</div>
+    <div class="machine-ip">{{ config.kali.ip }}</div>
+    <div class="card-footer">
+      <button class="btn btn-outline" onclick="checkStatus('kali')">Verifica Status</button>
+      <button class="btn btn-outline" onclick="revertSnapshot('kali')">Repara</button>
+      <span class="status" id="status-kali"></span>
+    </div>
+  </div>
+
+  <div class="status-card">
+    <div class="machine-name">Windows Server 2019</div>
+    <div class="machine-ip">{{ config.windows.ip }}</div>
+    <div class="card-footer">
+      <button class="btn btn-outline" onclick="checkStatus('windows')">Verifica Status</button>
+      <button class="btn btn-outline" onclick="revertSnapshot('windows')">Repara</button>
+      <span class="status" id="status-windows"></span>
+    </div>
+  </div>
+
+  <div class="status-card">
+    <div class="machine-name">Wazuh (Ubuntu)</div>
+    <div class="machine-ip">{{ config.ubuntu_wazuh.ip }}</div>
+    <div class="card-footer">
+      <button class="btn btn-outline" onclick="checkStatus('ubuntu_wazuh')">Verifica Status</button>
+      <button class="btn btn-outline" onclick="revertSnapshot('ubuntu_wazuh')">Repara</button>
+      <span class="status" id="status-ubuntu_wazuh"></span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ATTACKS -->
+<div class="section-title">Atacuri</div>
+<div class="card" style="margin-bottom:20px;">
+  <p class="step-desc" style="margin:0;">
+    Fiecare atac este definit printr-un fisier <span class="inline-code">.yml</span> in directorul
+    <span class="inline-code">attacks/</span>. Pentru a adauga un atac nou, este suficient sa creezi
+    un fisier nou in acel director cu campurile: <span class="inline-code">id</span>,
+    <span class="inline-code">name</span>, <span class="inline-code">description</span>,
+    <span class="inline-code">parameters</span>, <span class="inline-code">steps</span> si
+    <span class="inline-code">detection</span> — apare automat in aceasta lista la urmatoarea incarcare a paginii.
+  </p>
+</div>
+<div class="attacks-grid">
+
+  {% for atk in attacks %}
+  <div class="attack-card">
+    <div class="attack-name">{{ atk.name }}</div>
+    <div class="attack-meta">
+      <span class="badge">{{ atk.category }}</span>
+      <span class="badge">{{ atk.mitre }}</span>
+    </div>
+    <div class="attack-desc">{{ atk.description | truncate(120) }}</div>
+    <a href="/attack/{{ atk.id }}" class="btn btn-primary">Deschide</a>
+  </div>
+  {% endfor %}
+
+</div>
+
+<script>
+  function revertSnapshot(machine) {
+    var statusEl = document.getElementById("status-" + machine);
+    statusEl.className = "status";
+    statusEl.textContent = "Se repara...";
+
+    fetch("/revert/" + machine, { method: "POST" })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        statusEl.className = "status status-ok";
+        statusEl.textContent = "[OK] Reparat";
+      } else {
+        statusEl.className = "status status-err";
+        statusEl.textContent = "[ERR] " + data.error;
+      }
+    })
+    .catch(function() {
+      statusEl.className = "status status-err";
+      statusEl.textContent = "[ERR] Cerere esuata";
+    });
+  }
+
+  function checkStatus(machine) {
+    var statusEl = document.getElementById("status-" + machine);
+    statusEl.className = "status";
+    statusEl.textContent = "Se testeaza...";
+
+    fetch("/test-connection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ machine: machine })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        statusEl.className = "status status-ok";
+        statusEl.textContent = "[OK]";
+      } else {
+        statusEl.className = "status status-err";
+        statusEl.textContent = "[ERR]";
+      }
+    })
+    .catch(function() {
+      statusEl.className = "status status-err";
+      statusEl.textContent = "[ERR]";
+    });
+  }
+</script>
+
+</body>
+</html>

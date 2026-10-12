@@ -1,0 +1,35 @@
+{
+  "kali": {
+    "ip": "10.10.128.4",
+    "port": 22,
+    "username": "andrei_kali",
+    "password": "andrei_kali123"
+  },
+  "windows": {
+    "ip": "10.10.128.2",
+    "port": 22,
+    "username": "Administrator",
+    "password": "andrei_windows123"
+  },
+  "ubuntu_wazuh": {
+    "ip": "10.10.128.3",
+    "ssh_port": 22,
+    "ssh_username": "andrei",
+    "ssh_password": "andrei123"
+  },
+  "vmware": {
+    "vmrun": "C:\\Program Files (x86)\\VMware\\VMware Workstation\\vmrun.exe",
+    "kali": {
+      "vmx": "D:\\Virtual Machines\\Kali_linux\\Kali_linux.vmx",
+      "snapshot": "default-kali-clean"
+    },
+    "windows": {
+      "vmx": "D:\\Virtual Machines\\LIC_Win_Server_2019\\LIC_Win_Server_2019.vmx",
+      "snapshot": "AD-configured-clean"
+    },
+    "ubuntu_wazuh": {
+      "vmx": "D:\\Virtual Machines\\Ubuntu Wazuh\\Ubuntu Wazuh.vmx",
+      "snapshot": "ubuntu-wazuh-clean"
+    }
+  }
+}

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Free Lab - AD Attack Lab</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+  <h1>Free Lab</h1>
+  <nav class="nav-links">
+    <a href="/">Acasa</a>
+    <a href="/attacks">Atacuri</a>
+    <a href="/free-lab" class="active">Free Lab</a>
+    <a href="/settings">Setari</a>
+  </nav>
+</div>
+
+<div class="card">
+  <h2>Kali Linux -- Remote Command</h2>
+
+  <div class="command-row">
+    <input type="text" id="cmd-input" placeholder="whoami, ls /tmp, nmap 10.10.128.2 ..." autofocus>
+    <button class="btn btn-primary" id="run-btn" onclick="runCommand()">Ruleaza</button>
+  </div>
+
+  <div class="output-box" id="output-box">--</div>
+</div>
+
+<!-- DETECTION -->
+<div class="card">
+  <h2>Detection</h2>
+  <div class="card-footer" style="justify-content:flex-start; gap:14px;">
+    <button class="btn btn-outline" onclick="checkAlerts()">Verifica Alerte</button>
+    <span style="font-size:0.8rem; color:#858585;">ultimele 10 minute — toate alertele</span>
+    <span id="alert-status" class="status"></span>
+  </div>
+  <div id="alerts-box" class="mt"></div>
+</div>
+
+<script src="/static/socket.io.min.js"></script>
+<script>
+  var socket = io();
+  var outputBox = document.getElementById("output-box"); // output display area
+  var runBtn = document.getElementById("run-btn"); // "Run" button
+  var cmdInput = document.getElementById("cmd-input"); // input box for commands
+
+  cmdInput.addEventListener("keydown", function(e) { // allow Enter key to run command
+    if (e.key === "Enter") runCommand();
+  });
+
+  function runCommand() {
+    var command = cmdInput.value.trim();
+    if (!command) return;
+
+    outputBox.innerHTML = '<span class="prompt">kali $</span>' + escapeHtml(command) + "\n";
+    runBtn.disabled = true;
+    cmdInput.disabled = true;
+
+    // send command to Flask via WebSocket and trigger "run_command" socketio event
+    socket.emit("run_command", { command: command });
+  }
+
+  // bind to "output" event from Flask server to receive command output line by line
+  socket.on("output", function(data) {
+    if (data.done) {
+      outputBox.innerHTML += '<span class="line-done">-- done --</span>';
+      runBtn.disabled = false;
+      cmdInput.disabled = false;
+      cmdInput.focus();
+      return;
+    }
+
+    var line = data.line || "";
+    var cls = line.startsWith("[stderr]") || line.startsWith("[error]") ? "line-err" : "";
+    outputBox.innerHTML += '<span class="' + cls + '">' + escapeHtml(line) + '</span>\n';
+
+    outputBox.scrollTop = outputBox.scrollHeight;
+  });
+
+  function checkAlerts() {
+    var statusEl = document.getElementById("alert-status");
+    var alertsBox = document.getElementById("alerts-box");
+    statusEl.className = "status";
+    statusEl.textContent = "Se interogheaza...";
+    alertsBox.innerHTML = "";
+
+    fetch("/wazuh/recent-alerts?minutes=10")
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) {
+          statusEl.className = "status status-err";
+          statusEl.textContent = "[ERR] " + data.error;
+          return;
+        }
+        var alerts = data.alerts;
+        if (alerts.length === 0) {
+          statusEl.className = "status";
+          statusEl.textContent = "Nicio alerta gasita";
+          return;
+        }
+        statusEl.className = "status status-ok";
+        statusEl.textContent = alerts.length + " alerta(e) gasite";
+
+        var html = alerts.map(function(a) {
+          var lvlClass = a.rule_level >= 12 ? "critical" : a.rule_level >= 7 ? "high" : a.rule_level >= 4 ? "medium" : "low";
+          var log = a.full_log ? '<div class="alert-log">' + escapeHtml(a.full_log) + '</div>' : "";
+          return '<div class="alert-item">' +
+            '<div class="alert-header">' +
+            '<span class="alert-level level-' + lvlClass + '">L' + a.rule_level + '</span>' +
+            '<span class="alert-rule">Rule ' + escapeHtml(a.rule_id) + '</span>' +
+            '<span class="alert-desc">' + escapeHtml(a.rule_description) + '</span>' +
+            '<span class="alert-agent">' + escapeHtml(a.agent) + '</span>' +
+            '<span class="alert-time">' + escapeHtml(a.timestamp) + '</span>' +
+            '</div>' + log + '</div>';
+        }).join("");
+        alertsBox.innerHTML = html;
+      })
+      .catch(function() {
+        statusEl.className = "status status-err";
+        statusEl.textContent = "[ERR] Cerere esuata";
+      });
+  }
+
+  function escapeHtml(text) {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+</script>
+
+</body>
+</html>

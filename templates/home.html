@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>AD Attack Lab</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+  <h1>AD Attack Lab</h1>
+  <nav class="nav-links">
+    <a href="/" class="active">Acasa</a>
+    <a href="/attacks">Atacuri</a>
+    <a href="/free-lab">Free Lab</a>
+    <a href="/settings">Setari</a>
+  </nav>
+</div>
+
+<!-- ABOUT -->
+<div class="card">
+  <h2 style="font-size:1.4rem; margin-bottom:4px;">Infrastructura virtuala pentru simularea si monitorizarea atacurilor in Active Directory</h2>
+  <p class="step-desc" style="margin-top:10px;">
+    Platforma demonstreaza cum misconfiguratiile clasice din infrastructuri Active Directory
+    (Windows Server 2019) pot fi exploatate prin tehnici cunoscute de atac. Atacurile abuzeaza functionalitati
+    legitime ale protocoalelor Windows configurate gresit, scenarii frecvente in medii enterprise reale.
+  </p>
+  <div style="display:flex; gap:32px; margin-top:18px; flex-wrap:wrap;">
+    <div>
+      <div class="step-label">Atacuri simulate</div>
+      <div style="color:#dcdcaa; font-size:0.85rem; line-height:1.9;">
+        AS-REP Roasting (T1558.004)<br>
+        Kerberoasting (T1558.003)<br>
+        Password Spraying (T1110.003)<br>
+        DCSync (T1003.006)<br>
+        Pass-the-Hash (T1550.002)
+      </div>
+    </div>
+    <div>
+      <div class="step-label">Stack tehnic</div>
+      <div style="color:#dcdcaa; font-size:0.85rem; line-height:1.9;">
+        Flask + SocketIO (WSL)<br>
+        Kali Linux — impacket, netexec<br>
+        Windows Server 2019 — Active Directory<br>
+        Ubuntu — Wazuh SIEM
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ARCHITECTURE -->
+<div class="section-title">Arhitectura</div>
+<div class="card">
+  <pre class="cmd-block" style="color:#9e9e9e;">  [Browser]
+      ↕ WebSocket (live output)
+  [Flask pe WSL]
+      ↓ SSH
+  [Kali Linux VM — 10.10.128.4]
+      ↓ atacuri AD (impacket, netexec)
+  [Windows Server 2019 — DC01 — 10.10.128.2]
+      ↓ Windows Event Logs → Wazuh Agent
+  [Ubuntu VM — Wazuh Manager — 10.10.128.3]
+      ↑ SSH (alerts.json)
+  [Flask pe WSL]  →  [Browser — sectiunea Detection]</pre>
+</div>
+
+<!-- SETUP GUIDE -->
+<div class="section-title">Setup Lab</div>
+
+<!-- STEP 1 -->
+<div class="card">
+  <div class="step-label">Pasul 1</div>
+  <div class="step-title">Cerinte hardware si software</div>
+  <ul class="step-list">
+    <li>PC / Laptop — minim <strong>8 GB RAM</strong>, <strong>100 GB</strong> storage liber</li>
+    <li>VMware Workstation Pro 17.6.2 (sau versiune mai noua)</li>
+    <li>WSL2 pe Windows host — pentru rularea aplicatiei Flask</li>
+  </ul>
+</div>
+
+<!-- STEP 2 -->
+<div class="card">
+  <div class="step-label">Pasul 2</div>
+  <div class="step-title">VMware — Retea virtuala (VMnet8)</div>
+  <p class="step-desc">
+    Toate cele 3 VM-uri trebuie sa fie in aceeasi subretea. Se creeaza o retea de tip NAT
+    in VMware Workstation → Virtual Network Editor, numita <span class="inline-code">VMnet8</span>, cu DHCP dezactivat.
+  </p>
+  <pre class="cmd-block">Subnet IP:   10.10.0.0
+Subnet Mask: 255.255.0.0
+Tip:         NAT (VMnet8)
+DHCP:        Dezactivat</pre>
+  <p class="step-desc">IP-uri statice setate pe fiecare VM (Network Adapter → NAT):</p>
+  <pre class="cmd-block">VM                    IP             Masca           Gateway
+Windows Server DC01   10.10.128.2    255.255.0.0     10.10.1.250
+Ubuntu / Wazuh        10.10.128.3    255.255.0.0     10.10.1.250
+Kali Linux            10.10.128.4    255.255.0.0     10.10.1.250</pre>
+  <p class="note">! Activeaza primirea pachetelor ICMP in Windows Firewall pentru a testa comunicarea intre VM-uri (ping).</p>
+  <div class="ref-links">
+    <span class="ref-label">Tutorial extern:</span>
+    <a class="ref-item" href="https://www.youtube.com/watch?v=BKZkgOQY4Hg" target="_blank">Creare Retea Virtuala VMware</a>
+  </div>
+</div>
+
+<!-- STEP 3 -->
+<div class="card">
+  <div class="step-label">Pasul 3</div>
+  <div class="step-title">Windows Server 2019 — Active Directory</div>
+  <p class="step-desc">
+    Descarca ISO-ul evaluat gratuit de la Microsoft Evaluation Center si instaleaza
+    Active Directory Domain Services. Promoveaza serverul ca Domain Controller.
+    Conecteaza-l la VMnet8 si seteaza IP static la 10.10.128.2.
+  </p>
+
+  <h3>Configurare domeniu</h3>
+  <pre class="cmd-block">Server hostname:  DC01
+Domain (FQDN):    corp.local</pre>
+
+  <h3>Organizational Units si utilizatori</h3>
+  <pre class="cmd-block">Corp_Users
+    andrei.popescu    kk123456$
+    mihai.popa        kk12345$
+    ion.alexa         kk12345$
+    emilia.lucescu    kk12345$
+    diana.petrescu    kk12345$
+Corp_IT
+    it.admin          kkk12345$
+    it.support        kkk12345$
+Corp_ServiceAccounts
+    svc.backup        kkkk12345$
+    svc.web           kkkk12345$</pre>
+  <p class="note">Utilizatorii normali nu pot face login pe Domain Controller (buna practica de securitate).</p>
+
+  <h3>Misconfigurationi necesare pentru atacuri</h3>
+  <pre class="cmd-block"># AS-REP Roasting — dezactiveaza preauth pe conturile de serviciu
+Set-ADAccountControl -Identity "svc.backup" -DoesNotRequirePreAuth $true
+Set-ADAccountControl -Identity "svc.web"    -DoesNotRequirePreAuth $true
+
+# Kerberoasting — inregistreaza SPNs
+setspn -a HTTP/svc.web       corp\svc.web
+setspn -a backup/svc.backup  corp\svc.backup
+
+# Password Spray — dezactiveaza lockout (doar pentru laborator!)
+# Group Policy Management → Default Domain Policy →
+# Account Policies → Account Lockout Policy → Threshold: 0
+
+# DCSync — adauga it.admin in Domain Admins (drepturi de replicare)
+Add-ADGroupMember -Identity "Domain Admins" -Members "it.admin"</pre>
+
+  <h3>Audit Logging (necesar pentru detectia Wazuh)</h3>
+  <pre class="cmd-block">auditpol /set /subcategory:"Process Creation"        /success:enable /failure:enable
+auditpol /set /subcategory:"Directory Service Changes" /success:enable /failure:enable
+auditpol /set /subcategory:"Credential Validation"     /success:enable /failure:enable</pre>
+
+  <div class="ref-links">
+    <span class="ref-label">Tutoriale externe:</span>
+    <a class="ref-item" href="https://www.youtube.com/watch?v=hMnsgTc0Xvk" target="_blank">Instalare Windows Server 2019</a>
+    <a class="ref-item" href="https://www.youtube.com/watch?v=Dv8b3I-SKbE" target="_blank">Configurare Active Directory</a>
+  </div>
+</div>
+
+<!-- STEP 4 -->
+<div class="card">
+  <div class="step-label">Pasul 4</div>
+  <div class="step-title">Kali Linux</div>
+  <p class="step-desc">
+    Descarca Kali Linux (VMware edition) de la kali.org/get-kali. Importeaza VM-ul in VMware,
+    conecteaza-l la VMnet8 si seteaza IP static la 10.10.128.4.
+  </p>
+
+  <h3>Activare SSH (obligatoriu — platforma comunica cu Kali prin SSH)</h3>
+  <pre class="cmd-block">sudo apt update
+sudo apt install openssh-server -y
+sudo systemctl enable ssh
+sudo systemctl start ssh
+sudo systemctl status ssh   # verifica ca e active (running)</pre>
+
+  <div class="ref-links">
+    <span class="ref-label">Tutorial extern:</span>
+    <a class="ref-item" href="https://www.youtube.com/watch?v=JqfzOr-ffjs" target="_blank">Instalare Kali Linux pe VMware</a>
+  </div>
+</div>
+
+<!-- STEP 5 -->
+<div class="card">
+  <div class="step-label">Pasul 5</div>
+  <div class="step-title">Ubuntu 24.04 + Wazuh</div>
+  <p class="step-desc">
+    Descarca Ubuntu 24.04 LTS si creeaza o VM noua in VMware, conectata la VMnet8.
+    Seteaza IP static la 10.10.128.3.
+    Instaleaza Wazuh all-in-one (manager + indexer + dashboard) cu scriptul oficial.
+  </p>
+
+  <h3>Instalare Wazuh</h3>
+  <pre class="cmd-block">curl -sO https://packages.wazuh.com/4.14/wazuh-install.sh
+sudo bash ./wazuh-install.sh -a</pre>
+  <p class="note">Dupa instalare: dashboard disponibil la https://10.10.128.3 (user: admin, parola generata la instalare)</p>
+
+  <h3>Activare automata la reboot</h3>
+  <pre class="cmd-block">sudo systemctl enable wazuh-manager
+sudo systemctl enable wazuh-indexer
+sudo systemctl enable wazuh-dashboard</pre>
+
+  <h3>Instalare Wazuh Agent pe Windows DC01</h3>
+  <p class="step-desc">
+    In dashboard-ul Wazuh → Agents → Add agent → selecteaza Windows → copiaza comanda PowerShell
+    generata si ruleaz-o pe DC01. Agentul porneste si se conecteaza automat la manager.
+  </p>
+  <p class="note">In caz de probleme: <span class="inline-code">sudo systemctl restart wazuh-manager</span></p>
+
+  <div class="ref-links">
+    <span class="ref-label">Tutoriale externe:</span>
+    <a class="ref-item" href="https://www.youtube.com/watch?v=OBO5GJKT4F0" target="_blank">Instalare Ubuntu</a>
+    <a class="ref-item" href="https://www.youtube.com/watch?v=i68atPbB8uQ&feature=youtu.be" target="_blank">Instalare Wazuh + Agent pe Windows</a>
+    <a class="ref-item" href="https://documentation.wazuh.com/current/quickstart.html" target="_blank">Wazuh Quickstart (documentatie oficiala)</a>
+  </div>
+</div>
+
+<!-- STEP 6 -->
+<div class="card">
+  <div class="step-label">Pasul 6</div>
+  <div class="step-title">Snapshots si rulare aplicatie</div>
+  <p class="step-desc">
+    Dupa ce ai configurat toate VM-urile cu misconfiguratiile de mai sus, fa un snapshot curat
+    pe fiecare. Platforma poate reveni la el automat in caz de erori.
+  </p>
+  <pre class="cmd-block">Kali:    snapshot → "default-kali-clean"
+Windows: snapshot → "AD-configured-clean"
+Ubuntu:  snapshot → "ubuntu-wazuh-clean"</pre>
+
+  <h3>Prima instalare (o singura data)</h3>
+  <pre class="cmd-block">cd /path/to/licenta-infras_attack
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt</pre>
+
+  <h3>Rulare (de fiecare data)</h3>
+  <pre class="cmd-block">source venv/bin/activate
+python app.py
+
+# Acces: http://127.0.0.1:5000</pre>
+
+  <div style="margin-top:20px; padding-top:16px; border-top:1px solid #3c3c3c;">
+    <p class="step-desc" style="margin-bottom:14px;">
+      Ai finalizat setup-ul? Completeaza IP-urile si credentialele VM-urilor in pagina de Setari,
+      testeaza conexiunile, apoi mergi la Atacuri.
+    </p>
+    <a href="/settings" class="btn btn-primary" style="margin-right:10px;">Mergi la Setari</a>
+    <a href="/attacks" class="btn btn-outline">Vezi Atacurile</a>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Setari - AD Attack Lab</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+  <h1>Setari</h1>
+  <nav class="nav-links">
+    <a href="/">Acasa</a>
+    <a href="/attacks">Atacuri</a>
+    <a href="/free-lab">Free Lab</a>
+    <a href="/settings" class="active">Setari</a>
+  </nav>
+</div>
+
+<form method="POST" action="/settings">
+
+  <!-- KALI LINUX -->
+  <div class="card">
+    <h2>Kali Linux</h2>
+    <div class="field-row">
+      <div class="field">
+        <label>IP Address</label>
+        <input type="text" name="kali_ip" value="{{ config.kali.ip }}">
+      </div>
+      <div class="field field-sm">
+        <label>SSH Port</label>
+        <input type="number" name="kali_port" value="{{ config.kali.port }}">
+      </div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" name="kali_username" value="{{ config.kali.username }}">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" name="kali_password" value="{{ config.kali.password }}">
+      </div>
+    </div>
+    <div class="card-footer">
+      <button type="button" class="btn btn-outline" onclick="testConnection('kali')">Testeaza Conexiunea</button>
+      <span class="status" id="status-kali"></span>
+    </div>
+  </div>
+
+  <!-- WINDOWS SERVER 2019 -->
+  <div class="card">
+    <h2>Windows Server 2019</h2>
+    <div class="field-row">
+      <div class="field">
+        <label>IP Address</label>
+        <input type="text" name="windows_ip" value="{{ config.windows.ip }}">
+      </div>
+      <div class="field field-sm">
+        <label>SSH Port</label>
+        <input type="number" name="windows_port" value="{{ config.windows.port }}">
+      </div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" name="windows_username" value="{{ config.windows.username }}">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" name="windows_password" value="{{ config.windows.password }}">
+      </div>
+    </div>
+    <div class="card-footer">
+      <button type="button" class="btn btn-outline" onclick="testConnection('windows')">Testeaza Conexiunea</button>
+      <span class="status" id="status-windows"></span>
+    </div>
+  </div>
+
+  <!-- WAZUH / UBUNTU -->
+  <div class="card">
+    <h2>Wazuh (Ubuntu)</h2>
+
+    <h3>SSH - Ubuntu</h3>
+    <div class="field-row">
+      <div class="field">
+        <label>IP Address</label>
+        <input type="text" name="wazuh_ip" value="{{ config.ubuntu_wazuh.ip }}">
+      </div>
+      <div class="field field-sm">
+        <label>SSH Port</label>
+        <input type="number" name="wazuh_ssh_port" value="{{ config.ubuntu_wazuh.ssh_port }}">
+      </div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" name="wazuh_ssh_username" value="{{ config.ubuntu_wazuh.ssh_username }}">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" name="wazuh_ssh_password" value="{{ config.ubuntu_wazuh.ssh_password }}">
+      </div>
+    </div>
+
+
+<div class="card-footer">
+      <button type="button" class="btn btn-outline" onclick="testConnection('ubuntu_wazuh')">Testeaza Conexiunea</button>
+      <span class="status" id="status-ubuntu_wazuh"></span>
+    </div>
+  </div>
+
+  <!-- VMWARE SNAPSHOTS -->
+  <div class="card">
+    <h2>VMware Snapshots</h2>
+
+    <h3>vmrun.exe Path</h3>
+    <div class="field-row">
+      <div class="field">
+        <label>vmrun Path (Windows)</label>
+        <input type="text" name="vmrun_path" value="{{ config.vmware.vmrun }}">
+      </div>
+    </div>
+
+    <h3>Kali Linux</h3>
+    <div class="field-row">
+      <div class="field">
+        <label>VMX Path</label>
+        <input type="text" name="vmx_kali" value="{{ config.vmware.kali.vmx }}">
+      </div>
+      <div class="field">
+        <label>Snapshot Name</label>
+        <input type="text" name="snapshot_kali" value="{{ config.vmware.kali.snapshot }}">
+      </div>
+    </div>
+
+    <h3>Windows Server 2019</h3>
+    <div class="field-row">
+      <div class="field">
+        <label>VMX Path</label>
+        <input type="text" name="vmx_windows" value="{{ config.vmware.windows.vmx }}">
+      </div>
+      <div class="field">
+        <label>Snapshot Name</label>
+        <input type="text" name="snapshot_windows" value="{{ config.vmware.windows.snapshot }}">
+      </div>
+    </div>
+
+    <h3>Wazuh (Ubuntu)</h3>
+    <div class="field-row">
+      <div class="field">
+        <label>VMX Path</label>
+        <input type="text" name="vmx_wazuh" value="{{ config.vmware.ubuntu_wazuh.vmx }}">
+      </div>
+      <div class="field">
+        <label>Snapshot Name</label>
+        <input type="text" name="snapshot_wazuh" value="{{ config.vmware.ubuntu_wazuh.snapshot }}">
+      </div>
+    </div>
+  </div>
+
+  <div class="align-right">
+    <button type="submit" class="btn btn-primary">Salveaza Configuratia</button>
+  </div>
+
+</form>
+
+<script>
+  function getFormCredentials(machine) {
+    if (machine === "kali") {
+      return {
+        ip:       document.querySelector("[name=kali_ip]").value,
+        port:     document.querySelector("[name=kali_port]").value,
+        username: document.querySelector("[name=kali_username]").value,
+        password: document.querySelector("[name=kali_password]").value
+      };
+    } else if (machine === "windows") {
+      return {
+        ip:       document.querySelector("[name=windows_ip]").value,
+        port:     document.querySelector("[name=windows_port]").value,
+        username: document.querySelector("[name=windows_username]").value,
+        password: document.querySelector("[name=windows_password]").value
+      };
+    } else if (machine === "ubuntu_wazuh") {
+      return {
+        ip:       document.querySelector("[name=wazuh_ip]").value,
+        port:     document.querySelector("[name=wazuh_ssh_port]").value,
+        username: document.querySelector("[name=wazuh_ssh_username]").value,
+        password: document.querySelector("[name=wazuh_ssh_password]").value
+      };
+    }
+  }
+
+  function testConnection(machine) {
+    // test connection using the current form values in textboxes for the selected machine
+    var statusEl = document.getElementById("status-" + machine);
+    statusEl.className = "status";
+    statusEl.textContent = "Se testeaza...";
+
+    fetch("/test-connection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // the only difference between this and the checkStatus function is giving the credentials
+      body: JSON.stringify({ machine: machine, credentials: getFormCredentials(machine) })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        statusEl.className = "status status-ok";
+        statusEl.textContent = "[OK] Conectat";
+      } else {
+        statusEl.className = "status status-err";
+        statusEl.textContent = "[ERR] " + data.error;
+      }
+    })
+    .catch(function() {
+      statusEl.className = "status status-err";
+      statusEl.textContent = "[ERR] Cerere esuata";
+    });
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>{{ attack.name }} - AD Attack Lab</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+  <h1>{{ attack.name }}</h1>
+  <nav class="nav-links">
+    <a href="/">Acasa</a>
+    <a href="/attacks">Atacuri</a>
+    <a href="/free-lab">Free Lab</a>
+    <a href="/settings">Setari</a>
+  </nav>
+</div>
+
+<div style="margin-bottom:12px;">
+  <span class="badge">{{ attack.category }}</span>
+  <span class="badge">{{ attack.mitre }}</span>
+</div>
+
+<!-- INFO BLOCKS: description, misconfiguration, remediation -->
+<div class="info-grid">
+  <div class="info-block">
+    <h3>Descriere</h3>
+    <pre>{{ attack.description }}</pre>
+  </div>
+  <div class="info-block">
+    <h3>Misconfiguratie</h3>
+    <h3>Generala</h3>
+    <pre>{{ attack.misconfiguration_general }}</pre>
+    <h3>Specifica</h3>
+    <pre>{{ attack.misconfiguration_specific }}</pre>
+  </div>
+  <div class="info-block">
+    <h3>Remediere</h3>
+    <pre>{{ attack.remediation }}</pre>
+  </div>
+</div>
+
+<!-- PARAMETERS + RUN -->
+<div class="card">
+  <h2>Ruleaza Atacul</h2>
+
+  <div class="field-row">
+    {% for param in attack.parameters %}
+    <div class="field">
+      <label>{{ param.label }}</label>
+      <input type="text" id="param-{{ param.name }}" value="{{ param.default }}">
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card-footer">
+    <button class="btn btn-primary" id="run-btn" onclick="runAttack()">Ruleaza</button>
+    <button class="btn btn-outline" id="report-btn" disabled onclick="window.open('/report/{{ attack.id }}')">Genereaza Raport</button>
+  </div>
+
+  <div class="output-box mt" id="output-box">--</div>
+</div>
+
+{% if attack.detection %}
+<!-- DETECTION -->
+<div class="card">
+  <h2>Detection</h2>
+  <div style="margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
+    {% for r in attack.detection.wazuh_rules %}
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span class="badge">{{ r.id }}</span>
+      <span style="font-size:0.8rem; color:#9e9e9e;">{{ r.description }}</span>
+    </div>
+    {% endfor %}
+    <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+      <span class="badge">{{ attack.detection.mitre_technique }}</span>
+      <span style="font-size:0.8rem; color:#9e9e9e;">{{ attack.detection.mitre_description }}</span>
+    </div>
+  </div>
+  <div class="card-footer" style="justify-content:flex-start; gap:14px;">
+    <button class="btn btn-outline" onclick="checkAlerts()">Verifica Alerte</button>
+    <span style="font-size:0.8rem; color:#858585;">de la rularea atacului pana acum</span>
+    <span id="alert-status" class="status"></span>
+  </div>
+  <div id="alerts-box" class="mt"></div>
+</div>
+{% endif %}
+
+<script src="/static/socket.io.min.js"></script>
+<script>
+  var socket = io();
+  var outputBox = document.getElementById("output-box");
+  var runBtn = document.getElementById("run-btn");
+  var reportBtn = document.getElementById("report-btn");
+
+  function runAttack() {
+    // collect parameter values from input fields — Jinja2 generates this at page render
+    var params = {};
+    {% for param in attack.parameters %}
+    params["{{ param.name }}"] = document.getElementById("param-{{ param.name }}").value;
+    {% endfor %}
+
+    outputBox.innerHTML = "";
+    runBtn.disabled = true;
+
+    socket.emit("run_attack", {
+      attack_id: "{{ attack.id }}",
+      params: params
+    });
+  }
+
+  socket.on("attack_output", function(data) {
+    if (data.done) {
+      outputBox.innerHTML += '<span class="line-done">-- done --</span>';
+      runBtn.disabled = false;
+      reportBtn.disabled = false;
+      return;
+    }
+
+    var line = data.line || "";
+    var cls = "";
+    if (line.startsWith("-- Step")) cls = "line-step";
+    else if (line.startsWith("[stderr]") || line.startsWith("[error]")) cls = "line-err";
+
+    outputBox.innerHTML += '<span class="' + cls + '">' + escapeHtml(line) + '</span>\n';
+    outputBox.scrollTop = outputBox.scrollHeight;
+  });
+
+  function escapeHtml(text) {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function checkAlerts() {
+    var statusEl = document.getElementById("alert-status");
+    var alertsBox = document.getElementById("alerts-box");
+    statusEl.className = "status";
+    statusEl.textContent = "Se interogheaza...";
+    alertsBox.innerHTML = "";
+
+    fetch("/wazuh/alerts/{{ attack.id }}?minutes=3")
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) {
+          statusEl.className = "status status-err";
+          statusEl.textContent = "[ERR] " + data.error;
+          return;
+        }
+        var alerts = data.alerts;
+        if (alerts.length === 0) {
+          statusEl.className = "status";
+          statusEl.textContent = "Nicio alerta gasita";
+          return;
+        }
+        statusEl.className = "status status-ok";
+        statusEl.textContent = alerts.length + " alerta(e) gasite";
+
+        var html = alerts.map(function(a) {
+          var lvlClass = a.rule_level >= 12 ? "critical" : a.rule_level >= 7 ? "high" : a.rule_level >= 4 ? "medium" : "low";
+          var log = a.full_log ? '<div class="alert-log">' + escapeHtml(a.full_log) + '</div>' : "";
+          return '<div class="alert-item">' +
+            '<div class="alert-header">' +
+            '<span class="alert-level level-' + lvlClass + '">L' + a.rule_level + '</span>' +
+            '<span class="alert-rule">Rule ' + escapeHtml(a.rule_id) + '</span>' +
+            '<span class="alert-desc">' + escapeHtml(a.rule_description) + '</span>' +
+            '<span class="alert-agent">' + escapeHtml(a.agent) + '</span>' +
+            '<span class="alert-time">' + escapeHtml(a.timestamp) + '</span>' +
+            '</div>' + log + '</div>';
+        }).join("");
+        alertsBox.innerHTML = html;
+      })
+      .catch(function() {
+        statusEl.className = "status status-err";
+        statusEl.textContent = "[ERR] Cerere esuata";
+      });
+  }
+</script>
+
+</body>
+</html>

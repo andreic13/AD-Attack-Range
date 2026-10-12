@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Raport - {{ attack.name }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<button class="print-btn" onclick="window.print()">Printeaza / Exporta PDF</button>
+
+<div class="report-page">
+
+  <!-- HEADER -->
+  <div class="report-header">
+    <div class="report-title">AD Attack Lab — Raport de Securitate</div>
+    <div class="report-sub">Generat: {{ timestamp }} &nbsp;|&nbsp; Atac: {{ attack.name }} &nbsp;|&nbsp; MITRE: {{ attack.mitre }}</div>
+  </div>
+
+  <!-- ATTACK INFO -->
+  <div class="report-section">
+    <div class="report-section-label">Atac</div>
+    <div style="margin-bottom:10px;">
+      <span class="badge">{{ attack.category }}</span>
+      <span class="badge">{{ attack.mitre }}</span>
+      {% if attack.detection %}
+      <span class="badge">{{ attack.detection.mitre_technique }}</span>
+      {% endif %}
+    </div>
+    <div class="info-grid">
+      <div class="info-block">
+        <h3>Descriere</h3>
+        <pre>{{ attack.description }}</pre>
+      </div>
+      <div class="info-block">
+        <h3>Misconfiguratie</h3>
+        <pre>{{ attack.misconfiguration_general }}</pre>
+        <h3 style="margin-top:12px;">Specifica</h3>
+        <pre>{{ attack.misconfiguration_specific }}</pre>
+      </div>
+      <div class="info-block">
+        <h3>Remediere</h3>
+        <pre>{{ attack.remediation }}</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- PARAMETERS USED -->
+  <div class="report-section">
+    <div class="report-section-label">Parametri Utilizati</div>
+    <div class="params-grid">
+      {% for key, value in params.items() %}
+      <div class="param-item">
+        <div class="param-label">{{ key }}</div>
+        <div class="param-value">{{ value }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ATTACK OUTPUT -->
+  <div class="report-section">
+    <div class="report-section-label">Output Atac</div>
+    <div class="output-box">{% for line in output %}{%
+      if line.startswith("-- Step") %}<span class="line-step">{{ line }}</span>
+{% elif line.startswith("[stderr]") or line.startswith("[error]") %}<span class="line-err">{{ line }}</span>
+{% else %}{{ line }}
+{% endif %}{% endfor %}</div>
+  </div>
+
+  <!-- WAZUH ALERTS -->
+  <div class="report-section">
+    <div class="report-section-label">Wazuh Alerts Detected (de la rularea atacului pana acum)</div>
+    {% if alerts %}
+      {% for a in alerts %}
+      <div class="alert-item">
+        <div class="alert-header">
+          {% set lvl = a.rule_level %}
+          {% if lvl >= 12 %}<span class="alert-level level-critical">L{{ lvl }}</span>
+          {% elif lvl >= 7 %}<span class="alert-level level-high">L{{ lvl }}</span>
+          {% elif lvl >= 4 %}<span class="alert-level level-medium">L{{ lvl }}</span>
+          {% else %}<span class="alert-level level-low">L{{ lvl }}</span>
+          {% endif %}
+          <span class="alert-rule">Rule {{ a.rule_id }}</span>
+          <span class="alert-desc">{{ a.rule_description }}</span>
+          <span class="alert-agent">{{ a.agent }}</span>
+          <span class="alert-time">{{ a.timestamp }}</span>
+        </div>
+        {% if a.full_log %}
+        <div class="alert-log">{{ a.full_log }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="no-alerts">Nicio alerta detectata.</div>
+    {% endif %}
+  </div>
+
+</div>
+</body>
+</html>

